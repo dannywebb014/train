@@ -54,7 +54,7 @@
   input,textarea,select,button{font-family:inherit}
   .wrap{position:relative;max-width:880px;margin:0 auto;padding:0 16px}
 
-  /* Header — mobile: logo row at top, tabs as a bottom nav. Desktop: becomes the sidebar. */
+  /* Header — logo row at top; tabs as a bottom nav on mobile and a floating dock on desktop. */
   header{position:relative;z-index:40;border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top)}
   .head-row{max-width:880px;margin:0 auto;padding:24px 16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}
   .brand{min-width:0}
@@ -328,20 +328,20 @@
     .stat-row{grid-template-columns:1fr 1fr} .stat-row .stat:last-child{grid-column:1/-1}
   }
 
-  /* Desktop: header becomes a sidebar, tabs stack vertically */
+  /* Desktop: the phone's bottom tabs become a floating dock, so the page keeps its
+     full width and stays centred. Same layout as food. and breathe. */
   @media (min-width:768px){
-    body{padding-bottom:48px;padding-left:240px}
-    header{position:fixed;top:0;left:0;bottom:0;width:240px;border-bottom:none;border-right:1px solid var(--line);background:color-mix(in srgb,var(--surface) 50%,transparent);display:flex;flex-direction:column;padding:calc(24px + env(safe-area-inset-top)) 16px 16px}
-    .head-row{flex-direction:column;align-items:flex-start;gap:10px;padding:0 12px 28px;margin:0}
-    .logo{font-size:26px}
-    nav.tabs{position:static;flex-direction:column;gap:2px;background:none;border:none;box-shadow:none;padding:0}
-    .tab{flex:none;flex-direction:row;gap:12px;padding:10px 12px;border-radius:9px;font-size:14px;font-weight:500;letter-spacing:.1px;text-transform:none;min-height:0;text-align:left}
+    body{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
+    nav.tabs{left:50%;right:auto;bottom:calc(20px + env(safe-area-inset-bottom));translate:-50% 0;gap:4px;padding:5px;border:1px solid var(--line);border-radius:999px;
+      background:color-mix(in srgb,var(--surface) 92%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+      box-shadow:0 10px 30px rgba(44,34,24,.16),0 1px 3px rgba(44,34,24,.08)}
+    .tab{flex:none;flex-direction:row;gap:8px;padding:9px 16px;border-radius:999px;font-size:14px;font-weight:600;letter-spacing:.1px;text-transform:none;min-height:0}
+    .tab .ico,.tab .ico svg{width:18px;height:18px}
     .tab:hover:not(.active){background:var(--hover);color:var(--text)}
-    .tab.active{background:var(--ember-dim);color:var(--ember-text);font-weight:600}
+    .tab.active{background:var(--ember);color:var(--on-accent)}
     .wrap{padding:8px 40px 0}
     section.view{padding-top:32px}
-    .toast{left:auto;right:24px;bottom:24px;transform:translateY(20px)}
-    .toast.show{transform:none}
+    .toast{bottom:calc(96px + env(safe-area-inset-bottom))}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
