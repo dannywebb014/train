@@ -16,7 +16,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://dannywebb014.github.io/lifeos/fonts.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="module">
+  // One sign-in for every hub app (lifeos/auth.js): no verified session, off to /lifeos/signin/.
+  // train. then syncs through the same client (see init() below).
+  import { requireAuth, supabase, signOut } from "/lifeos/auth.js";
+  const session = await requireAuth();
+  window.__hubAuth = { supabase, session, signOut };
+  window.dispatchEvent(new CustomEvent("hub-auth", { detail: window.__hubAuth }));
+</script>
 <style>
   /* My Hub theme (matches food hub) — Paprika accent, Cobalt for cardio/trend, Sage for done */
   :root{
@@ -305,21 +312,6 @@
   .toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);font-family:var(--body);font-weight:500;font-size:14px;padding:12px 18px;border-radius:10px;z-index:200;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 8px 24px rgba(44,34,24,.18);max-width:calc(100% - 32px)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-  .auth{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:calc(22px + env(safe-area-inset-top)) 22px calc(22px + env(safe-area-inset-bottom));background:var(--bg);background-image:var(--noise)}
-  .auth[hidden]{display:none}
-  .auth-card{width:100%;max-width:400px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:32px 26px;box-shadow:var(--shadow-lg)}
-  .auth-brand{margin-bottom:24px;text-align:center}
-  .auth-brand .logo{font-size:36px}
-  .auth-brand .ab-s{font-size:14px;color:var(--muted);margin-top:4px}
-  .auth-in{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:15px;padding:12px 13px;margin-bottom:10px;transition:all .15s}
-  .auth-in::placeholder{color:var(--faint)}
-  .auth-in:focus{outline:none;border-color:var(--ember);background:var(--surface)}
-  .auth-switch{font-size:14px;color:var(--muted);text-align:center;margin-top:14px}
-  .auth-switch button{appearance:none;background:none;border:none;color:var(--ember-text);font-weight:600;font-size:14px;cursor:pointer;padding:0}
-  .auth-msg{font-size:13px;text-align:center;margin-top:12px;min-height:16px;color:var(--muted)}
-  .auth-msg.err{color:var(--red)} .auth-msg.ok{color:var(--good)}
-  .auth-local{text-align:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
-  .auth-local button{appearance:none;background:none;border:none;color:var(--faint);font-size:13px;cursor:pointer;text-decoration:underline}
   .acct-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
   .acct-row .who{font-size:13px;color:var(--muted)} .acct-row .who b{color:var(--text)}
   .foot-note{margin:28px 0 0;font-size:12px;color:var(--faint);text-align:center;line-height:1.7}
@@ -455,17 +447,6 @@
     <div class="modal-foot"><button class="btn ghost" id="modal-copy">Copy</button><button class="btn primary" id="modal-dl">Download file</button></div>
   </div>
 </div>
-<div class="auth" id="auth" hidden>
-  <div class="auth-card">
-    <div class="auth-brand"><div class="logo">train<span>.</span></div><div class="ab-s">Sync your training across devices</div></div>
-    <input class="auth-in" id="auth-email" type="email" inputmode="email" autocomplete="email" placeholder="Email">
-    <input class="auth-in" id="auth-pw" type="password" autocomplete="current-password" placeholder="Password (min 6 characters)">
-    <button class="btn primary" id="auth-go" style="width:100%;justify-content:center">Sign in</button>
-    <div class="auth-switch">New here? <button id="auth-toggle">Create an account</button></div>
-    <div class="auth-msg" id="auth-msg"></div>
-    <div class="auth-local"><button id="auth-skip">Use offline on this device only</button></div>
-  </div>
-</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -563,17 +544,14 @@
   function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
   function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-  /* ===== SUPABASE CONFIG — paste your two project values here ===== */
-  var SUPABASE_URL = 'https://YOUR-PROJECT-ID.supabase.co';
-  var SUPABASE_ANON_KEY = 'YOUR-PUBLIC-ANON-KEY';
-  /* =============================================================== */
+  /* Synced to Supabase (table app_state, app 'train') through the shared lifeOS.
+     sign-in and client, set up by the module at the top of the page. */
 
   /* ---- state ---- */
   var DATA=null, STORE_KEY='train:'+PLAN_ID, memCache=null, saveTimer=null;
   var lastRestDur=90, currentView='today', selWeek=1, chartMetric='weight';
   var TIMER={interval:null,audio:null};
   var sb=null, USER=null, cloud=false, booted=false;
-  var CFG_OK = SUPABASE_URL.indexOf('YOUR-')===-1 && SUPABASE_ANON_KEY.indexOf('YOUR-')===-1;
 
   function defaultData(){
     var body={};
@@ -620,22 +598,28 @@
   async function loadData(){
     if(cloud&&sb&&USER){
       try{
-        var res=await sb.from('app_state').select('data').eq('user_id',USER.id).maybeSingle();
+        var res=await sb.from('app_state').select('data,updated_at').eq('user_id',USER.id).eq('app','train').maybeSingle();
         if(res.error) throw res.error;
-        if(res.data&&res.data.data&&Object.keys(res.data.data).length) return migrate(res.data.data);
-        // empty cloud row → seed it from whatever is cached locally (first sign-in migration)
-        var local=readLocal(); var seed=local?migrate(local):defaultData();
-        try{await sb.from('app_state').upsert({user_id:USER.id,data:seed,updated_at:new Date().toISOString()});}catch(_){}
+        var local=readLocal();
+        var remote=res.data&&res.data.data&&Object.keys(res.data.data).length?res.data.data:null;
+        // Changes saved here while offline are newer than the Supabase copy: keep them and send them up.
+        var localNewer=!!(local&&local._savedAt&&(!remote||local._savedAt>Date.parse(res.data.updated_at)));
+        // Keep the Supabase copy on this device too, so it opens offline with the latest.
+        if(remote&&!localNewer){ var fresh=migrate(remote); writeLocal(fresh); return fresh; }
+        // No Supabase copy yet (first sync from this device), or this device is newer.
+        var seed=local?migrate(local):defaultData();
+        try{await pushState(seed);}catch(_){}
         return seed;
       }catch(e){var l=readLocal();return l?migrate(l):defaultData();}
     }
     var loc=readLocal(); return loc?migrate(loc):defaultData();
   }
+  function pushState(d){return sb.from('app_state').upsert({user_id:USER.id,app:'train',data:d,updated_at:new Date().toISOString()},{onConflict:'user_id,app'});}
   function scheduleSave(){setSave('saving'); if(saveTimer)clearTimeout(saveTimer); saveTimer=setTimeout(doSave,500);}
   async function doSave(){
-    memCache=DATA; writeLocal(DATA);
+    DATA._savedAt=Date.now(); memCache=DATA; writeLocal(DATA);
     if(cloud&&sb&&USER){
-      try{var r=await sb.from('app_state').upsert({user_id:USER.id,data:DATA,updated_at:new Date().toISOString()}); if(r.error)throw r.error; setSave('ok');}
+      try{var r=await pushState(DATA); if(r.error)throw r.error; setSave('ok');}
       catch(e){setSave('warn');}
     } else { setSave('ok'); }
   }
@@ -1265,39 +1249,8 @@
 
   /* ---- auth ---- */
   var authMode='signin';
-  function authMsg(t,kind){var m=document.getElementById('auth-msg');m.textContent=t||'';m.className='auth-msg'+(kind?' '+kind:'');}
-  function showAuth(){document.getElementById('auth').hidden=false;}
-  function hideAuth(){document.getElementById('auth').hidden=true;}
-  function wireAuth(){
-    var email=document.getElementById('auth-email'), pw=document.getElementById('auth-pw'), go=document.getElementById('auth-go'), toggle=document.getElementById('auth-toggle'), skip=document.getElementById('auth-skip');
-    toggle.addEventListener('click',function(){
-      authMode=authMode==='signin'?'signup':'signin';
-      go.textContent=authMode==='signin'?'Sign in':'Create account';
-      toggle.textContent=authMode==='signin'?'Create an account':'I already have an account';
-      document.querySelector('.auth-switch').childNodes[0].nodeValue=authMode==='signin'?'New here? ':'Got an account? ';
-      authMsg('');
-    });
-    async function submit(){
-      var e=email.value.trim(), p=pw.value;
-      if(!e||!p){authMsg('Enter your email and password.','err');return;}
-      if(p.length<6){authMsg('Password needs at least 6 characters.','err');return;}
-      go.disabled=true; authMsg(authMode==='signup'?'Creating account…':'Signing in…');
-      try{
-        var r = authMode==='signup'
-          ? await sb.auth.signUp({email:e,password:p})
-          : await sb.auth.signInWithPassword({email:e,password:p});
-        if(r.error){authMsg(r.error.message,'err');go.disabled=false;return;}
-        if(authMode==='signup' && r.data && r.data.user && !r.data.session){
-          authMsg('Account made — check your email to confirm, then sign in.','ok');go.disabled=false;authMode='signin';go.textContent='Sign in';return;
-        }
-        // session arrives via onAuthStateChange → boot
-      }catch(err){authMsg('Something went wrong. Check your connection.','err');go.disabled=false;}
-    }
-    go.addEventListener('click',submit);
-    pw.addEventListener('keydown',function(ev){if(ev.key==='Enter')submit();});
-    skip.addEventListener('click',function(){cloud=false;hideAuth();boot();});
-  }
-  async function signOut(){try{if(sb)await sb.auth.signOut();}catch(e){}; location.reload();}
+  // Signs out of every hub app on this device and goes to the lifeOS. sign-in.
+  function signOut(){window.__hubAuth.signOut();}
 
   async function boot(){
     if(booted)return; booted=true;
@@ -1308,21 +1261,11 @@
   }
 
   (function init(){
-    wire(); wireAuth();
-    if(CFG_OK && window.supabase && window.supabase.createClient){
-      sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-      sb.auth.getSession().then(function(res){
-        var session=res && res.data ? res.data.session : null;
-        if(session && session.user){ USER=session.user; cloud=true; hideAuth(); boot(); }
-        else { showAuth(); }
-      });
-      sb.auth.onAuthStateChange(function(_evt,session){
-        if(session && session.user){ if(!booted){ USER=session.user; cloud=true; hideAuth(); boot(); } }
-      });
-    } else {
-      // not configured (or opened outside a browser with the client) → local-only mode
-      cloud=false; hideAuth(); boot();
-    }
+    wire();
+    // The sign-in module at the top of the page hands over the client once the session is verified.
+    function start(hub){ sb=hub.supabase; USER=hub.session.user; cloud=true; boot(); }
+    if(window.__hubAuth) start(window.__hubAuth);
+    else window.addEventListener('hub-auth',function(e){start(e.detail);},{once:true});
   })();
 })();
 </script>
