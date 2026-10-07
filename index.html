@@ -605,7 +605,12 @@
         // Changes saved here while offline are newer than the Supabase copy: keep them and send them up.
         var localNewer=!!(local&&local._savedAt&&(!remote||local._savedAt>Date.parse(res.data.updated_at)));
         // Keep the Supabase copy on this device too, so it opens offline with the latest.
-        if(remote&&!localNewer){ var fresh=migrate(remote); writeLocal(fresh); return fresh; }
+        if(remote&&!localNewer){
+          var fresh=migrate(remote); writeLocal(fresh);
+          // The plan is shared with lifeOS's today. and week.: send it up if what's saved is out of date.
+          if(JSON.stringify(remote.plan)!==JSON.stringify(planSummary())) pushState(fresh).then(function(){},function(){});
+          return fresh;
+        }
         // No Supabase copy yet (first sync from this device), or this device is newer.
         var seed=local?migrate(local):defaultData();
         try{await pushState(seed);}catch(_){}
@@ -614,7 +619,14 @@
     }
     var loc=readLocal(); return loc?migrate(loc):defaultData();
   }
-  function pushState(d){return sb.from('app_state').upsert({user_id:USER.id,app:'train',data:d,updated_at:new Date().toISOString()},{onConflict:'user_id,app'});}
+  /* The plan's shape goes up with the data, so lifeOS's today. and week. read it
+     here instead of keeping their own copy: { start, weeks: [[{key, offset, title}], …] }. */
+  function planSummary(){
+    var weeks=[];
+    for(var w=1;w<=WEEKS;w++) weeks.push(schedFor(w).map(function(x){return {key:x.key,offset:x.offset,title:x.title};}));
+    return {start:isoDate(START),weeks:weeks};
+  }
+  function pushState(d){return sb.from('app_state').upsert({user_id:USER.id,app:'train',data:Object.assign({},d,{plan:planSummary()}),updated_at:new Date().toISOString()},{onConflict:'user_id,app'});}
   function scheduleSave(){setSave('saving'); if(saveTimer)clearTimeout(saveTimer); saveTimer=setTimeout(doSave,500);}
   async function doSave(){
     DATA._savedAt=Date.now(); memCache=DATA; writeLocal(DATA);
